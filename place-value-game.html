@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Alphabet Place Value Game!</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  </head>
+  <body
+    class="bg-gray-100 min-h-screen flex flex-col items-center justify-center px-4"
+  >
+    <!-- Navbar -->
+    <nav
+      class="bg-white shadow w-full py-4 px-6 flex justify-between items-center mb-6 fixed top-0 left-0 z-50"
+    >
+      <div class="text-lg font-bold text-blue-700">🧠 Place Value</div>
+      <a href="index.html" class="text-blue-600 font-medium hover:text-blue-800"
+        >🏠 Home</a
+      >
+    </nav>
+    <div id="app" class="w-full max-w-md space-y-8">
+      <!-- Scoreboard -->
+      <div
+        class="bg-white shadow-md rounded-lg py-4 px-6 text-center text-xl font-semibold text-green-700"
+      >
+        Score: {{ score }} | High Score: {{ highScore }}
+      </div>
+
+      <!-- Game Box -->
+      <div class="text-center space-y-6 bg-white p-8 rounded-lg shadow-lg">
+        <!-- Big Random Letter -->
+        <div class="text-9xl font-extrabold text-blue-700">
+          {{ currentLetter }}
+        </div>
+
+        <!-- Input Field -->
+        <input
+          type="number"
+          v-model.number="userInput"
+          @input="delayedCheck"
+          placeholder="Enter place value"
+          class="w-full px-4 py-2 rounded-md border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-center text-lg"
+        />
+
+        <!-- Feedback -->
+        <div v-if="feedback" :class="feedbackColor" class="font-medium">
+          {{ feedback }}
+        </div>
+      </div>
+      <!-- Time Spent Timer -->
+      <div
+        class="fixed bottom-2 left-0 w-full text-center text-sm text-gray-600"
+      >
+        🕒 Time on page: {{ timeSpent.minutes }}m {{ timeSpent.seconds }}s
+      </div>
+    </div>
+
+    <!-- Sound Effects -->
+    <audio id="correct-sound" preload="auto">
+      <source src="correct.mp3" type="audio/mpeg" />
+    </audio>
+    <audio id="wrong-sound" preload="auto">
+      <source src="wrong.mp3" type="audio/mpeg" />
+    </audio>
+
+    <script>
+      const { createApp } = Vue;
+
+      createApp({
+        data() {
+          return {
+            currentLetter: "",
+            userInput: null,
+            score: 0,
+            highScore: 0,
+            feedback: "",
+            feedbackColor: "",
+            inputTimeout: null,
+            timeSpent: {
+              minutes: 0,
+              seconds: 0,
+            },
+            timerInterval: null,
+          };
+        },
+        methods: {
+          generateRandomLetter() {
+            const code = Math.floor(Math.random() * 26) + 65;
+            this.currentLetter = String.fromCharCode(code);
+          },
+          playSound(type) {
+            const soundId =
+              type === "correct" ? "correct-sound" : "wrong-sound";
+            const sound = document.getElementById(soundId);
+            if (sound) {
+              sound.pause();
+              sound.currentTime = 0;
+              sound.play().catch(() => {
+                console.warn(
+                  `Unable to play ${type} sound (probably browser autoplay policy).`
+                );
+              });
+            }
+          },
+          checkAnswer() {
+            const correctValue = this.currentLetter.charCodeAt(0) - 64;
+            if (this.userInput === correctValue) {
+              this.score++;
+              this.updateHighScore();
+              this.feedback = "Correct! 🎉";
+              this.feedbackColor = "text-green-600";
+              this.playSound("correct");
+              this.userInput = null;
+              this.generateRandomLetter();
+            } else {
+              this.feedback = "Wrong! Try again.";
+              this.feedbackColor = "text-red-600";
+              this.playSound("wrong");
+            }
+          },
+          delayedCheck() {
+            clearTimeout(this.inputTimeout);
+            this.inputTimeout = setTimeout(() => {
+              if (this.userInput !== null) {
+                this.checkAnswer();
+              }
+            }, 500); // 2 second delay
+          },
+          updateHighScore() {
+            if (this.score > this.highScore) {
+              this.highScore = this.score;
+              localStorage.setItem("highScore", this.highScore);
+            }
+          },
+          loadHighScore() {
+            const savedScore = parseInt(localStorage.getItem("highScore"));
+            if (!isNaN(savedScore)) {
+              this.highScore = savedScore;
+            }
+          },
+        },
+        mounted() {
+          this.loadHighScore();
+          this.generateRandomLetter();
+          let totalSeconds = 0;
+          this.timerInterval = setInterval(() => {
+            totalSeconds++;
+            this.timeSpent.minutes = Math.floor(totalSeconds / 60);
+            this.timeSpent.seconds = totalSeconds % 60;
+          }, 1000);
+        },
+        beforeUnmount() {
+          clearInterval(this.timerInterval);
+        },
+      }).mount("#app");
+    </script>
+  </body>
+</html>
