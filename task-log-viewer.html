@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>All Task Logs</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+</head>
+<body class="bg-gray-100 min-h-screen py-10 px-4 flex justify-center">
+  <nav
+      class="bg-white shadow w-full py-4 px-6 flex justify-between items-center fixed top-0 left-0 z-50"
+    >
+      <div class="text-lg font-bold text-purple-700">📚 Task Log Viewer</div>
+      <div class="flex justify-between">
+        <a href="task-app.html" class="text-purple-600 font-medium hover:text-purple-800 px-3"
+        >📆 Daily Task Tracker</a>
+        <a
+          href="index.html"
+          class="text-indigo-600 font-medium hover:text-indigo-800"
+          >🏠 Home</a
+        >
+      </div>
+    </nav>
+  <div id="app" class="mt-10 bg-white rounded-lg shadow-md p-6 w-full max-w-2xl space-y-6">
+    <h1 class="text-2xl font-bold text-center text-blue-800">📚 Task Logs</h1>
+
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
+      <div class="w-full">
+        <label for="date" class="block text-sm font-medium text-gray-700">Filter by Date</label>
+        <input type="date" v-model="selectedDate" @change="filterLogs" class="w-full px-4 py-2 border rounded mt-1" />
+      </div>
+      <div class="flex gap-2">
+        <button @click="exportAllPDFs" class="bg-purple-600 hover:bg-purple-700 text-white text-sm px-3 py-2 rounded">📦 Export All Logs</button>
+        <button @click="printPreview" class="bg-gray-600 hover:bg-gray-700 text-white text-sm px-3 py-2 rounded">🖨 Print Preview</button>
+      </div>
+    </div>
+
+    <div v-if="filteredLogs.length === 0" class="text-gray-500 text-sm">No logs available for the selected date.</div>
+
+    <div v-for="log in filteredLogs" :key="log.date" class="bg-white shadow border-l-4 border-blue-500 p-4 rounded mb-4" :id="'log-' + log.date">
+      <div class="flex justify-between items-center">
+        <div>
+          <h2 class="text-lg font-semibold text-blue-900">📅 {{ log.date }} ({{ log.day }})</h2>
+          <p class="text-sm text-blue-700">✅ Completed: {{ log.completed }} | ❌ Pending: {{ log.pending }}</p>
+        </div>
+        <button @click="exportPDF(log.date)" class="bg-green-600 hover:bg-green-700 text-white text-sm px-3 py-1 rounded">Export PDF</button>
+      </div>
+      <ul class="mt-2 list-disc ml-6 space-y-1 text-sm">
+        <li v-for="(task, index) in log.tasks" :key="index" :class="task.done ? 'text-green-700' : 'text-gray-500'">
+          {{ task.done ? '✔' : '✗' }} {{ task.text }}
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  <script>
+    const { createApp } = Vue;
+    const { jsPDF } = window.jspdf;
+
+    createApp({
+      data() {
+        return {
+          logs: [],
+          selectedDate: '',
+          filteredLogs: []
+        };
+      },
+      methods: {
+        loadAllLogs() {
+          this.logs = [];
+          for (let key in localStorage) {
+            if (key.startsWith('tasks_')) {
+              const date = key.replace('tasks_', '');
+              try {
+                const parsed = JSON.parse(localStorage.getItem(key));
+                this.logs.push({
+                  date,
+                  day: new Date(date).toLocaleDateString('en-US', { weekday: 'long' }),
+                  completed: parsed.filter(t => t.done).length,
+                  pending: parsed.filter(t => !t.done).length,
+                  tasks: parsed
+                });
+              } catch {}
+            }
+          }
+          this.logs.sort((a, b) => new Date(b.date) - new Date(a.date));
+          this.filteredLogs = this.logs;
+        },
+        filterLogs() {
+          if (!this.selectedDate) {
+            this.filteredLogs = this.logs;
+          } else {
+            this.filteredLogs = this.logs.filter(log => log.date === this.selectedDate);
+          }
+        },
+        exportPDF(date) {
+          const logEl = document.getElementById('log-' + date);
+          html2canvas(logEl, { scale: 2 }).then(canvas => {
+            const imgData = canvas.toDataURL('image/png');
+            const pdf = new jsPDF();
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+            pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+            pdf.save(`task-log-${date}.pdf`);
+          });
+        },
+        exportAllPDFs() {
+          let delay = 0;
+          this.filteredLogs.forEach((log, i) => {
+            setTimeout(() => this.exportPDF(log.date), i * 1500);
+          });
+        },
+        printPreview() {
+          window.print();
+        }
+      },
+      mounted() {
+        this.loadAllLogs();
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>
