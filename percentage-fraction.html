@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Percentage Fraction Practice Game</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  </head>
+  <body
+    class="bg-gradient-to-br from-blue-50 to-purple-100 min-h-screen flex flex-col items-center justify-center px-4"
+  >
+    <!-- Navbar -->
+    <nav
+      class="bg-white shadow w-full py-4 px-6 flex justify-between items-center fixed top-0 left-0 z-50"
+    >
+      <div class="text-lg font-bold text-blue-700">
+        Percentage ↔ Fraction Game
+      </div>
+      <a href="index.html" class="text-blue-600 font-medium hover:text-blue-800"
+        >Home</a
+      >
+    </nav>
+    <div class="mt-20"></div>
+    <div id="app" class="w-full max-w-md space-y-8">
+      <!-- Scoreboard -->
+      <div
+        class="bg-white shadow-md rounded-lg py-4 px-6 text-center text-xl font-semibold text-blue-700"
+      >
+        <div>Score: {{ score }} | High Score: {{ highScore }}</div>
+        <div v-if="score > 0" class="text-sm text-gray-700 mt-1">
+          Avg Time: {{ averageResponseTime.toFixed(2) }}s | Accuracy: {{
+          accuracy.toFixed(1) }}%
+        </div>
+      </div>
+
+      <!-- Checkboxes for difficulty -->
+      <div
+        class="flex flex-wrap justify-center gap-4 bg-white shadow p-4 rounded-lg"
+      >
+        <label class="inline-flex items-center space-x-2">
+          <input
+            type="checkbox"
+            v-model="optEasy"
+            class="form-checkbox h-5 w-5 text-blue-600"
+          />
+          <span class="text-gray-700">Easy (1-50%)</span>
+        </label>
+        <label class="inline-flex items-center space-x-2">
+          <input
+            type="checkbox"
+            v-model="optMedium"
+            class="form-checkbox h-5 w-5 text-blue-600"
+          />
+          <span class="text-gray-700">Medium (1-100%)</span>
+        </label>
+        <label class="inline-flex items-center space-x-2">
+          <input
+            type="checkbox"
+            v-model="optHard"
+            class="form-checkbox h-5 w-5 text-blue-600"
+          />
+          <span class="text-gray-700">Hard (Improper fractions)</span>
+        </label>
+      </div>
+
+      <!-- Game Box -->
+      <div class="text-center space-y-6 bg-white p-8 rounded-lg shadow-lg">
+        <div class="text-3xl font-extrabold text-blue-700">
+          {{ problemText }}
+        </div>
+        <input
+          type="text"
+          v-model="userInput"
+          @input="delayedCheck"
+          placeholder="Enter your answer"
+          class="w-full px-4 py-2 rounded-md border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-center text-xl"
+        />
+        <div v-if="feedback" :class="feedbackColor" class="font-medium">
+          {{ feedback }}
+        </div>
+      </div>
+
+      <!-- Performance Summary -->
+      <div class="bg-white p-4 rounded shadow text-sm text-gray-700">
+        <h3 class="font-semibold text-lg text-blue-700 mb-2">Performance</h3>
+        <p>Total Questions: {{ totalQuestions }}</p>
+        <p>Correct Answers: {{ score }}</p>
+        <p>Accuracy: {{ accuracy.toFixed(1) }}%</p>
+        <p>Fastest Time: {{ fastestTime.toFixed(2) }}s</p>
+        <p>Slowest Time: {{ slowestTime.toFixed(2) }}s</p>
+      </div>
+
+      <div class="fixed bottom-2 left-0 w-full ml-2 text-sm text-gray-600">
+        Time on page: {{ timeSpent.minutes }}m {{ timeSpent.seconds }}s
+      </div>
+    </div>
+
+    <!-- Sound Effects (add your own correct.mp3 and wrong.mp3 files) -->
+    <audio id="correct-sound" preload="auto">
+      <source src="correct.mp3" type="audio/mpeg" />
+    </audio>
+    <audio id="wrong-sound" preload="auto">
+      <source src="wrong.mp3" type="audio/mpeg" />
+    </audio>
+
+    <script>
+      const { createApp } = Vue;
+      createApp({
+        data() {
+          return {
+            problemType: "percentToFraction", // or 'fractionToPercent'
+            percentage: 0,
+            fractionNum: 0,
+            fractionDen: 0,
+            userInput: null,
+            score: 0,
+            highScore: 0,
+            totalTime: 0,
+            startTime: null,
+            feedback: "",
+            feedbackColor: "",
+            inputTimeout: null,
+            totalQuestions: 0,
+            fastestTime: Infinity,
+            slowestTime: 0,
+            optEasy: true,
+            optMedium: false,
+            optHard: false,
+            timeSpent: { minutes: 0, seconds: 0 },
+            timerInterval: null,
+          };
+        },
+        computed: {
+          averageResponseTime() {
+            return this.score > 0 ? this.totalTime / this.score : 0;
+          },
+          accuracy() {
+            return this.totalQuestions > 0
+              ? (this.score / this.totalQuestions) * 100
+              : 0;
+          },
+          problemText() {
+            if (this.problemType === "percentToFraction") {
+              return `Convert ${this.percentage}% to a fraction`;
+            } else {
+              return `Convert ${this.fractionNum}/${this.fractionDen} to a percentage`;
+            }
+          },
+        },
+        methods: {
+          generateProblem() {
+            const rand = Math.random();
+            this.problemType =
+              rand > 0.5 ? "percentToFraction" : "fractionToPercent";
+
+            let maxVal = 50;
+            if (this.optMedium) maxVal = 100;
+            if (this.optHard && rand > 0.7) maxVal = 200; // improper
+
+            if (this.problemType === "percentToFraction") {
+              this.percentage = Math.floor(Math.random() * maxVal) + 1;
+              // Simplified fraction
+              const gcd = (a, b) => (b === 0 ? a : gcd(b, a % b));
+              const num = this.percentage;
+              const den = 100;
+              const g = gcd(num, den);
+              this.fractionNum = num / g;
+              this.fractionDen = den / g;
+            } else {
+              // Random simplified fraction
+              const num = Math.floor(Math.random() * maxVal) + 1;
+              let den = Math.floor(Math.random() * 99) + 2;
+              const g = gcd(num, den);
+              this.fractionNum = num / g;
+              this.fractionDen = den / g;
+              this.percentage = Math.round(
+                (this.fractionNum / this.fractionDen) * 100,
+              );
+            }
+            this.startTime = Date.now();
+            this.userInput = null;
+            this.feedback = "";
+          },
+          playSound(type) {
+            const id = type === "correct" ? "correct-sound" : "wrong-sound";
+            const sound = document.getElementById(id);
+            if (sound) {
+              sound.pause();
+              sound.currentTime = 0;
+              sound.play().catch(() => {});
+            }
+          },
+          checkAnswer() {
+            if (this.userInput === null) return;
+            let correct;
+            if (this.problemType === "percentToFraction") {
+              correct = `${this.fractionNum}/${this.fractionDen}`;
+            } else {
+              correct = `${this.percentage}%`;
+            }
+            this.totalQuestions++;
+            const elapsed = (Date.now() - this.startTime) / 1000;
+            if (this.userInput.trim() === correct) {
+              this.totalTime += elapsed;
+              this.score++;
+              this.fastestTime = Math.min(this.fastestTime, elapsed);
+              this.slowestTime = Math.max(this.slowestTime, elapsed);
+              this.updateHighScore();
+              this.feedback = `Correct! ${correct}`;
+              this.feedbackColor = "text-green-600";
+              this.playSound("correct");
+              this.userInput = ""; // Auto-clear input on correct
+            } else {
+              this.feedback = `Wrong! It's ${correct}. Try again.`;
+              this.feedbackColor = "text-red-600";
+              this.playSound("wrong");
+            }
+            this.saveStats();
+            this.generateProblem();
+          },
+          delayedCheck() {
+            clearTimeout(this.inputTimeout);
+            this.inputTimeout = setTimeout(() => {
+              if (this.userInput !== null) this.checkAnswer();
+            }, 500);
+          },
+          updateHighScore() {
+            if (this.score > this.highScore) {
+              this.highScore = this.score;
+              localStorage.setItem(
+                "highScorePercentageFraction",
+                this.highScore,
+              );
+            }
+          },
+          saveStats() {
+            const stats = {
+              score: this.score,
+              totalQuestions: this.totalQuestions,
+              totalTime: this.totalTime,
+              fastestTime: this.fastestTime,
+              slowestTime: this.slowestTime,
+            };
+            localStorage.setItem(
+              "statsPercentageFraction",
+              JSON.stringify(stats),
+            );
+          },
+          loadStats() {
+            const saved = JSON.parse(
+              localStorage.getItem("statsPercentageFraction"),
+            );
+            if (saved) {
+              this.score = saved.score || 0;
+              this.totalQuestions = saved.totalQuestions || 0;
+              this.totalTime = saved.totalTime || 0;
+              this.fastestTime = saved.fastestTime || Infinity;
+              this.slowestTime = saved.slowestTime || 0;
+            }
+          },
+          loadHighScore() {
+            const saved = parseInt(
+              localStorage.getItem("highScorePercentageFraction"),
+            );
+            if (!isNaN(saved)) this.highScore = saved;
+          },
+        },
+        mounted() {
+          this.loadStats();
+          this.loadHighScore();
+          this.generateProblem();
+          let totalSeconds = 0;
+          this.timerInterval = setInterval(() => {
+            totalSeconds++;
+            this.timeSpent.minutes = Math.floor(totalSeconds / 60);
+            this.timeSpent.seconds = totalSeconds % 60;
+          }, 1000);
+        },
+        watch: {
+          optEasy() {
+            this.generateProblem();
+          },
+          optMedium() {
+            this.generateProblem();
+          },
+          optHard() {
+            this.generateProblem();
+          },
+        },
+        beforeUnmount() {
+          clearInterval(this.timerInterval);
+        },
+      }).mount("#app");
+    </script>
+  </body>
+</html>
