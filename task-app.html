@@ -1,10 +1,11 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <title>Daily Task Tracker</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   </head>
   <body
     class="bg-gradient-to-br from-sky-50 to-blue-100 min-h-screen py-10 px-4 flex justify-center"
@@ -96,7 +97,13 @@
 
       <div class="flex flex-col gap-3 text-sm text-gray-600 mt-4 border-t pt-4">
         <div class="flex justify-between">
-          <div></div>
+          <button
+            @click="downloadScreenshot"
+            :disabled="capturing"
+            class="text-blue-600 hover:text-blue-800 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {{ capturing ? '⏳ Capturing...' : '📸 Screenshot' }}
+          </button>
           <button @click="clearTasks" class="text-red-600 hover:text-red-800">
             🧹 Reset Today
           </button>
@@ -114,6 +121,7 @@
           return {
             newTask: "",
             tasks: [],
+            capturing: false,
             dateKey,
             dayOfWeek: today.toLocaleDateString("en-US", { weekday: "long" }),
             formattedDate: today.toLocaleDateString("en-US", {
@@ -155,7 +163,7 @@
           saveTasks() {
             localStorage.setItem(
               `tasks_${this.dateKey}`,
-              JSON.stringify(this.tasks)
+              JSON.stringify(this.tasks),
             );
           },
           loadTasks() {
@@ -174,6 +182,47 @@
               this.tasks = [];
               this.saveTasks();
               localStorage.setItem("lastActiveDate", this.dateKey);
+            }
+          },
+          async downloadScreenshot() {
+            if (this.capturing) return;
+            this.capturing = true;
+            try {
+              const target = document.getElementById("app");
+              const canvas = await html2canvas(target, {
+                backgroundColor: "#ffffff",
+                scale: window.devicePixelRatio || 2,
+                onclone: (clonedDoc) => {
+                  clonedDoc.querySelectorAll("#app input").forEach((el) => {
+                    const h = el.getBoundingClientRect().height || 40;
+                    el.style.lineHeight = h + "px";
+                    el.style.paddingTop = "0px";
+                    el.style.paddingBottom = "0px";
+                  });
+                  clonedDoc.querySelectorAll("#app button").forEach((el) => {
+                    const rect = el.getBoundingClientRect();
+                    const h = rect.height || 40;
+                    el.style.webkitAppearance = "none";
+                    el.style.appearance = "none";
+                    el.style.boxSizing = "border-box";
+                    el.style.height = h + "px";
+                    el.style.width = rect.width ? rect.width + "px" : "";
+                    el.style.lineHeight = h + "px";
+                    el.style.paddingTop = "0px";
+                    el.style.paddingBottom = "0px";
+                    el.style.verticalAlign = "middle";
+                  });
+                },
+              });
+              const link = document.createElement("a");
+              link.download = `tasks_${this.dateKey}.png`;
+              link.href = canvas.toDataURL("image/png");
+              link.click();
+            } catch (err) {
+              console.error("Screenshot failed:", err);
+              alert("Sorry, the screenshot couldn't be captured.");
+            } finally {
+              this.capturing = false;
             }
           },
         },
