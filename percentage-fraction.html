@@ -34,31 +34,34 @@
         </div>
       </div>
 
-      <!-- Checkboxes for difficulty -->
+      <!-- Difficulty options (mutually exclusive) -->
       <div
         class="flex flex-wrap justify-center gap-4 bg-white shadow p-4 rounded-lg"
       >
-        <label class="inline-flex items-center space-x-2">
+        <label class="inline-flex items-center space-x-2 cursor-pointer">
           <input
-            type="checkbox"
-            v-model="optEasy"
-            class="form-checkbox h-5 w-5 text-blue-600"
+            type="radio"
+            value="easy"
+            v-model="difficulty"
+            class="form-radio h-5 w-5 text-blue-600"
           />
           <span class="text-gray-700">Easy (1-50%)</span>
         </label>
-        <label class="inline-flex items-center space-x-2">
+        <label class="inline-flex items-center space-x-2 cursor-pointer">
           <input
-            type="checkbox"
-            v-model="optMedium"
-            class="form-checkbox h-5 w-5 text-blue-600"
+            type="radio"
+            value="medium"
+            v-model="difficulty"
+            class="form-radio h-5 w-5 text-blue-600"
           />
           <span class="text-gray-700">Medium (1-100%)</span>
         </label>
-        <label class="inline-flex items-center space-x-2">
+        <label class="inline-flex items-center space-x-2 cursor-pointer">
           <input
-            type="checkbox"
-            v-model="optHard"
-            class="form-checkbox h-5 w-5 text-blue-600"
+            type="radio"
+            value="hard"
+            v-model="difficulty"
+            class="form-radio h-5 w-5 text-blue-600"
           />
           <span class="text-gray-700">Hard (Improper fractions)</span>
         </label>
@@ -69,13 +72,18 @@
         <div class="text-3xl font-extrabold text-blue-700">
           {{ problemText }}
         </div>
-        <input
-          type="text"
-          v-model="userInput"
-          @input="delayedCheck"
-          placeholder="Enter your answer"
-          class="w-full px-4 py-2 rounded-md border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-center text-xl"
-        />
+        <div class="grid grid-cols-2 gap-3">
+          <button
+            v-for="opt in options"
+            :key="opt"
+            @click="checkAnswer(opt)"
+            :disabled="answered"
+            :class="optionClass(opt)"
+            class="px-4 py-3 rounded-md border-2 text-lg font-semibold transition disabled:cursor-not-allowed"
+          >
+            {{ opt }}
+          </button>
+        </div>
         <div v-if="feedback" :class="feedbackColor" class="font-medium">
           {{ feedback }}
         </div>
@@ -113,20 +121,22 @@
             percentage: 0,
             fractionNum: 0,
             fractionDen: 0,
-            userInput: null,
+            percentNumer: 0,
+            percentDenom: 1,
+            options: [],
+            correctAnswer: "",
+            selectedAnswer: null,
+            answered: false,
             score: 0,
             highScore: 0,
             totalTime: 0,
             startTime: null,
             feedback: "",
             feedbackColor: "",
-            inputTimeout: null,
             totalQuestions: 0,
             fastestTime: Infinity,
             slowestTime: 0,
-            optEasy: true,
-            optMedium: false,
-            optHard: false,
+            difficulty: "easy", // 'easy' | 'medium' | 'hard'
             timeSpent: { minutes: 0, seconds: 0 },
             timerInterval: null,
           };
@@ -149,38 +159,139 @@
           },
         },
         methods: {
+          gcd(a, b) {
+            return b === 0 ? a : this.gcd(b, a % b);
+          },
+          formatPercentFraction(numer, denom) {
+            if (denom === 1) return `${numer}%`;
+            const whole = Math.floor(numer / denom);
+            const rem = numer % denom;
+            if (whole === 0) return `${rem}/${denom}%`;
+            return `${whole} ${rem}/${denom}%`;
+          },
           generateProblem() {
             const rand = Math.random();
             this.problemType =
               rand > 0.5 ? "percentToFraction" : "fractionToPercent";
 
-            let maxVal = 50;
-            if (this.optMedium) maxVal = 100;
-            if (this.optHard && rand > 0.7) maxVal = 200; // improper
+            // Difficulty controls the range of percentages/fractions,
+            // and whether improper fractions (>100%) are allowed.
+            let maxPercent = 50;
+            let allowImproper = false;
+            if (this.difficulty === "medium") {
+              maxPercent = 100;
+            } else if (this.difficulty === "hard") {
+              maxPercent = 300;
+              allowImproper = true;
+            }
 
             if (this.problemType === "percentToFraction") {
-              this.percentage = Math.floor(Math.random() * maxVal) + 1;
+              this.percentage = Math.floor(Math.random() * maxPercent) + 1;
               // Simplified fraction
-              const gcd = (a, b) => (b === 0 ? a : gcd(b, a % b));
               const num = this.percentage;
               const den = 100;
-              const g = gcd(num, den);
+              const g = this.gcd(num, den);
               this.fractionNum = num / g;
               this.fractionDen = den / g;
             } else {
-              // Random simplified fraction
-              const num = Math.floor(Math.random() * maxVal) + 1;
-              let den = Math.floor(Math.random() * 99) + 2;
-              const g = gcd(num, den);
+              // Random simplified fraction within the selected difficulty.
+              // Common fraction families (1/1..1/20, 2/1..2/20, ... up to
+              // 5/1..5/20) come up a lot in practice, so favor them.
+              let den, num;
+              if (Math.random() < 0.4) {
+                num = Math.floor(Math.random() * 5) + 1; // 1-5
+                const minDenForPercent = Math.max(
+                  1,
+                  Math.ceil((100 * num) / maxPercent),
+                );
+                const minDenForProper = allowImproper ? 1 : num + 1;
+                const minDen = Math.min(
+                  20,
+                  Math.max(minDenForPercent, minDenForProper),
+                );
+                den = Math.floor(Math.random() * (20 - minDen + 1)) + minDen;
+              } else {
+                den = Math.floor(Math.random() * 19) + 2; // 2-20
+                if (allowImproper) {
+                  // Can be proper or improper, up to 3x the denominator
+                  num = Math.floor(Math.random() * (den * 3)) + 1;
+                } else {
+                  // Always a proper fraction (num < den), capped by maxPercent
+                  const cap = Math.max(
+                    1,
+                    Math.min(den - 1, Math.round((maxPercent / 100) * den)),
+                  );
+                  num = Math.floor(Math.random() * cap) + 1;
+                }
+              }
+              const g = this.gcd(num, den);
               this.fractionNum = num / g;
               this.fractionDen = den / g;
+              // Exact percent as a fraction (numerator/denominator), reduced.
+              // e.g. 1/9 -> 100/9, which is not a whole number.
+              const pNum = this.fractionNum * 100;
+              const pDen = this.fractionDen;
+              const pg = this.gcd(pNum, pDen);
+              this.percentNumer = pNum / pg;
+              this.percentDenom = pDen / pg;
               this.percentage = Math.round(
                 (this.fractionNum / this.fractionDen) * 100,
               );
             }
             this.startTime = Date.now();
-            this.userInput = null;
+            this.selectedAnswer = null;
+            this.answered = false;
             this.feedback = "";
+            this.generateOptions();
+          },
+          generateOptions() {
+            const opts = new Set();
+
+            if (this.problemType === "percentToFraction") {
+              const correct = `${this.fractionNum}/${this.fractionDen}`;
+              this.correctAnswer = correct;
+              opts.add(correct);
+
+              let guard = 0;
+              while (opts.size < 4 && guard < 50) {
+                guard++;
+                const offset =
+                  (Math.floor(Math.random() * 20) + 1) *
+                  (Math.random() < 0.5 ? -1 : 1);
+                let fakePercent = this.percentage + offset;
+                if (fakePercent <= 0) fakePercent = Math.abs(fakePercent) + 1;
+
+                const g = this.gcd(fakePercent, 100);
+                opts.add(`${fakePercent / g}/${100 / g}`);
+              }
+            } else {
+              // fractionToPercent: correct answer is the EXACT percent,
+              // shown as a fraction/mixed number when it isn't a whole
+              // percent (e.g. 1/9 -> "11 1/9%", not a rounded "11%").
+              const correct = this.formatPercentFraction(
+                this.percentNumer,
+                this.percentDenom,
+              );
+              this.correctAnswer = correct;
+              opts.add(correct);
+
+              let guard = 0;
+              while (opts.size < 4 && guard < 50) {
+                guard++;
+                const offset =
+                  (Math.floor(Math.random() * 3) + 1) *
+                  (Math.random() < 0.5 ? -1 : 1);
+                let fakeNum = this.fractionNum + offset;
+                if (fakeNum <= 0) fakeNum = Math.abs(fakeNum) + 1;
+
+                const pNum = fakeNum * 100;
+                const pDen = this.fractionDen;
+                const g = this.gcd(pNum, pDen);
+                opts.add(this.formatPercentFraction(pNum / g, pDen / g));
+              }
+            }
+
+            this.options = Array.from(opts).sort(() => Math.random() - 0.5);
           },
           playSound(type) {
             const id = type === "correct" ? "correct-sound" : "wrong-sound";
@@ -191,17 +302,15 @@
               sound.play().catch(() => {});
             }
           },
-          checkAnswer() {
-            if (this.userInput === null) return;
-            let correct;
-            if (this.problemType === "percentToFraction") {
-              correct = `${this.fractionNum}/${this.fractionDen}`;
-            } else {
-              correct = `${this.percentage}%`;
-            }
+          checkAnswer(selected) {
+            if (this.answered) return;
+            this.answered = true;
+            this.selectedAnswer = selected;
+
+            const correct = this.correctAnswer;
             this.totalQuestions++;
             const elapsed = (Date.now() - this.startTime) / 1000;
-            if (this.userInput.trim() === correct) {
+            if (selected === correct) {
               this.totalTime += elapsed;
               this.score++;
               this.fastestTime = Math.min(this.fastestTime, elapsed);
@@ -210,20 +319,27 @@
               this.feedback = `Correct! ${correct}`;
               this.feedbackColor = "text-green-600";
               this.playSound("correct");
-              this.userInput = ""; // Auto-clear input on correct
             } else {
-              this.feedback = `Wrong! It's ${correct}. Try again.`;
+              this.feedback = `Wrong! It's ${correct}.`;
               this.feedbackColor = "text-red-600";
               this.playSound("wrong");
             }
             this.saveStats();
-            this.generateProblem();
+            setTimeout(() => {
+              this.generateProblem();
+            }, 900);
           },
-          delayedCheck() {
-            clearTimeout(this.inputTimeout);
-            this.inputTimeout = setTimeout(() => {
-              if (this.userInput !== null) this.checkAnswer();
-            }, 500);
+          optionClass(opt) {
+            if (!this.answered) {
+              return "border-gray-300 hover:border-blue-500 hover:bg-blue-50 text-gray-800";
+            }
+            if (opt === this.correctAnswer) {
+              return "border-green-500 bg-green-50 text-green-700";
+            }
+            if (opt === this.selectedAnswer) {
+              return "border-red-500 bg-red-50 text-red-700";
+            }
+            return "border-gray-200 text-gray-400";
           },
           updateHighScore() {
             if (this.score > this.highScore) {
@@ -278,13 +394,7 @@
           }, 1000);
         },
         watch: {
-          optEasy() {
-            this.generateProblem();
-          },
-          optMedium() {
-            this.generateProblem();
-          },
-          optHard() {
+          difficulty() {
             this.generateProblem();
           },
         },
