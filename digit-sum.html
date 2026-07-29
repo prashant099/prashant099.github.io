@@ -74,13 +74,18 @@
           </div>
         </div>
 
-        <input
-          type="number"
-          v-model.number="userInput"
-          @input="delayedCheck"
-          placeholder="Enter the digit sum"
-          class="w-full px-4 py-2 rounded-md border border-gray-300 focus:outline-none focus:ring-2 focus:ring-pink-500 text-center text-xl"
-        />
+        <div class="grid grid-cols-2 gap-3">
+          <button
+            v-for="opt in options"
+            :key="opt"
+            @click="checkAnswer(opt)"
+            :disabled="answered"
+            :class="optionClass(opt)"
+            class="px-4 py-3 rounded-md border-2 text-lg font-semibold transition disabled:cursor-not-allowed"
+          >
+            {{ opt }}
+          </button>
+        </div>
 
         <div
           v-if="feedback"
@@ -122,14 +127,15 @@
           return {
             number: "0",
             correctSum: 0,
-            userInput: null,
+            options: [],
+            selectedAnswer: null,
+            answered: false,
             score: 0,
             highScore: 0,
             totalTime: 0,
             startTime: null,
             feedback: "",
             feedbackColor: "",
-            inputTimeout: null,
             totalQuestions: 0,
             fastestTime: Infinity,
             slowestTime: 0,
@@ -181,9 +187,24 @@
             }
             this.number = digits.join("");
             this.correctSum = sum;
-            this.userInput = null;
+            this.selectedAnswer = null;
+            this.answered = false;
             this.feedback = "";
             this.startTime = Date.now();
+            this.generateOptions();
+          },
+          generateOptions() {
+            const opts = new Set([this.correctSum]);
+            let guard = 0;
+            while (opts.size < 4 && guard < 50) {
+              guard++;
+              const offset =
+                (this.randomInt(1, 9)) * (Math.random() < 0.5 ? -1 : 1);
+              let candidate = this.correctSum + offset;
+              if (candidate < 1) candidate = this.correctSum + Math.abs(offset);
+              opts.add(candidate);
+            }
+            this.options = Array.from(opts).sort(() => Math.random() - 0.5);
           },
           playSound(type) {
             const id = type === "correct" ? "correct-sound" : "wrong-sound";
@@ -194,10 +215,13 @@
               sound.play().catch(() => {});
             }
           },
-          checkAnswer() {
+          checkAnswer(selected) {
+            if (this.answered) return;
+            this.answered = true;
+            this.selectedAnswer = selected;
             this.totalQuestions++;
             const elapsed = (Date.now() - this.startTime) / 1000;
-            if (this.userInput === this.correctSum) {
+            if (selected === this.correctSum) {
               this.totalTime += elapsed;
               this.score++;
               this.fastestTime = Math.min(this.fastestTime, elapsed);
@@ -206,21 +230,27 @@
               this.feedback = `✅ Correct! Digit sum = ${this.correctSum}`;
               this.feedbackColor = "text-green-600";
               this.playSound("correct");
-              this.generateNumber();
             } else {
-              this.feedback = `❌ Wrong! Try again.`;
+              this.feedback = `❌ Wrong! Digit sum = ${this.correctSum}`;
               this.feedbackColor = "text-red-600";
               this.playSound("wrong");
             }
             this.saveStats();
+            setTimeout(() => {
+              this.generateNumber();
+            }, 900);
           },
-          delayedCheck() {
-            clearTimeout(this.inputTimeout);
-            this.inputTimeout = setTimeout(() => {
-              if (this.userInput !== null) {
-                this.checkAnswer();
-              }
-            }, 500);
+          optionClass(opt) {
+            if (!this.answered) {
+              return "border-gray-300 hover:border-pink-500 hover:bg-pink-50 text-gray-800";
+            }
+            if (opt === this.correctSum) {
+              return "border-green-500 bg-green-50 text-green-700";
+            }
+            if (opt === this.selectedAnswer) {
+              return "border-red-500 bg-red-50 text-red-700";
+            }
+            return "border-gray-200 text-gray-400";
           },
           updateHighScore() {
             if (this.score > this.highScore) {
